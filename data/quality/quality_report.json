@@ -1,0 +1,33 @@
+{
+    "timestamp_execucao": "2026-11-21T04:46:53.266033+00:00",
+    "status": "PASSED",
+    "metricas_gerais": {
+        "total_registros": 30,
+        "registros_unicos": 30,
+        "duplicatas_encontradas": 0
+    },
+    "validacoes": {
+        "schema_valido": true,
+        "colunas_faltantes": [],
+        "unicidade_ok": true,
+        "intervalos_ok": true,
+        "erros_intervalo_temperatura": 0,
+        "erros_intervalo_umidade": 0
+    },
+    "null_ratio_por_coluna": {
+        "cidade": 0.0,
+        "data": 0.0,
+        "ano": 0.0,
+        "mes": 0.0,
+        "eh_feriado": 0.0,
+        "nome_feriado": 0.0,
+        "tipo_feriado": 0.0,
+        "temperatura_c": 0.0,
+        "sensacao_termica_c": 0.0,
+        "umidade_percent": 0.0,
+        "descricao_clima": 0.0,
+        "amplitude_termica_c": 0.0,
+        "indice_desconforto_termico": 0.0,
+        "classificacao_termica": 0.0
+    }
+}
