@@ -1,12 +1,12 @@
 import os
 import json
 import logging
+from datetime import datetime
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from datetime import datetime
 
 from src.models import Base, Cidade, Feriado, MedicaoClimatica
 
@@ -38,20 +38,20 @@ MAPA_UF_CAPITAIS = {
 
 def carregar_para_postgres(df_gold: pd.DataFrame, caminho_feriados_json: str) -> None:
     """
-    Cria as tabelas relacionais e carrega os dados validados no PostgreSQL com Upsert (idempotência).
+    Cria as tabelas no PostgreSQL e realiza a carga idempotente (Upsert) dos dados.
     """
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise ValueError("Variável DATABASE_URL não encontrada no arquivo .env")
 
     engine = create_engine(database_url)
-    Base.metadata.create_all(engine)  # Cria as 3 tabelas caso ainda não existam
+    Base.metadata.create_all(engine)
 
     Session = sessionmaker(bind=engine)
     session = Session()
 
     try:
-        # 1. Upsert da tabela 'feriados' a partir do JSON validado
+        # 1. Upsert dos feriados nacionais
         with open(caminho_feriados_json, "r", encoding="utf-8") as f:
             feriados_raw = json.load(f)
 
@@ -74,7 +74,7 @@ def carregar_para_postgres(df_gold: pd.DataFrame, caminho_feriados_json: str) ->
             )
             session.execute(stmt_feriado)
 
-       # 2. Garantir cadastro único das 'cidades' e mapear nome -> id
+        # 2. Upsert das cidades e mapeamento nome -> id
         cidades_unicas = df_gold["cidade"].unique()
         for nome_cidade in cidades_unicas:
             uf_cidade = MAPA_UF_CAPITAIS.get(nome_cidade)
@@ -91,7 +91,7 @@ def carregar_para_postgres(df_gold: pd.DataFrame, caminho_feriados_json: str) ->
 
         mapa_cidades = {c.nome: c.id for c in session.query(Cidade).all()}
 
-        # 3. Upsert da tabela fato 'medicoes_climaticas'
+        # 3. Upsert das medições climáticas
         for _, row in df_gold.iterrows():
             cidade_id = mapa_cidades[row["cidade"]]
             stmt_medicao = pg_insert(MedicaoClimatica).values(

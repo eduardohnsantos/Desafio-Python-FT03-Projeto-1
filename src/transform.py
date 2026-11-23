@@ -4,7 +4,7 @@ import pandas as pd
 
 def transformar_dados_sql(caminho_clima_json: str, caminho_feriados_json: str) -> pd.DataFrame:
     """
-    Executa desaninhamento duplo (UNNEST de 'list' e 'weather') e agregação diária via DuckDB SQL.
+    Desaninha os JSONs brutos, agrega os dados climáticos por dia e cruza com os feriados via DuckDB.
     """
     con = duckdb.connect(database=":memory:")
 
@@ -12,14 +12,14 @@ def transformar_dados_sql(caminho_clima_json: str, caminho_feriados_json: str) -
     WITH raw_clima AS (
         SELECT * FROM read_json_auto('{caminho_clima_json}')
     ),
-    -- 1. PRIMEIRO UNNEST: Explode a lista de 40 previsões (5 dias x 8 horários) por cidade
+    -- 1. Expande a lista de previsões por cidade
     previsoes_explodidas AS (
         SELECT
             CAST(city.name AS VARCHAR) AS cidade,
             UNNEST(list) AS item
         FROM raw_clima
     ),
-    -- 2. SEGUNDO UNNEST: Explode o array 'weather' de cada previsão
+    -- 2. Extrai campos climáticos e expande a descrição do tempo
     clima_desaninhado AS (
         SELECT
             cidade,
@@ -33,7 +33,7 @@ def transformar_dados_sql(caminho_clima_json: str, caminho_feriados_json: str) -
         FROM previsoes_explodidas,
         UNNEST(item.weather) AS w
     ),
-    -- 3. DEDUPLICAÇÃO E AGREGAÇÃO DIÁRIA (1 registro consolidado por cidade + dia)
+    -- 3. Agrupa e consolida as métricas por cidade e data
     clima_diario AS (
         SELECT
             TRIM(cidade) AS cidade,
@@ -57,7 +57,7 @@ def transformar_dados_sql(caminho_clima_json: str, caminho_feriados_json: str) -
             CAST(type AS VARCHAR) AS tipo_feriado
         FROM read_json_auto('{caminho_feriados_json}')
     )
-    -- 4. CRUZAMENTO DE FONTES (LEFT JOIN), TRATAMENTO DE NULOS E ENRIQUECIMENTO DE MÉTRICAS
+    -- 4. Cruza clima com feriados e calcula indicadores térmicos
     SELECT
         c.cidade,
         c.data,
