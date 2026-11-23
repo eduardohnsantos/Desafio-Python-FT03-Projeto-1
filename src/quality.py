@@ -7,8 +7,8 @@ import pyarrow.parquet as pq
 
 def validar_e_persistir(
     df: pd.DataFrame,
-    caminho_parquet: str = "data/gold/clima_feriados",
-    caminho_relatorio: str = "data/quality/quality_report.json"
+    caminho_parquet: str = "output/clima_feriados",
+    caminho_relatorio: str = "output/data_quality_report.json"
 ) -> dict:
     """
     Executa verificações de Data Quality, gera relatório JSON e salva em Parquet particionado (Snappy).

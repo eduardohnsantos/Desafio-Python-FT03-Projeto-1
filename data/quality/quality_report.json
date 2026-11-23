@@ -1,9 +1,9 @@
 {
-    "timestamp_execucao": "2026-11-21T04:46:53.266033+00:00",
+    "timestamp_execucao": "2026-11-23T02:00:20.078653+00:00",
     "status": "PASSED",
     "metricas_gerais": {
-        "total_registros": 30,
-        "registros_unicos": 30,
+        "total_registros": 135,
+        "registros_unicos": 135,
         "duplicatas_encontradas": 0
     },
     "validacoes": {
