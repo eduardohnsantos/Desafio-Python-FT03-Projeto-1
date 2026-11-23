@@ -1,31 +1,34 @@
-# Desafio-Python-FT03-Projeto-1
-# 🌦️ Pipeline de Engenharia de Dados: Clima & Feriados Nacionais (Brasil)
+# 🌦️ Pipeline de Engenharia de Dados: Inteligência Climática & Feriados para Turismo
 
-Pipeline de dados ponta a ponta (End-to-End) desenvolvido em Python para extração resiliente de dados meteorológicos das 27 capitais brasileiras e do calendário oficial de feriados nacionais, aplicando processamento analítico em SQL via **DuckDB**, auditoria automatizada de **Data Quality**, persistência colunar em **Parquet** particionado e carga relacional idempotente (Upsert) em **PostgreSQL (Render)**.
+## 🎯 Contexto de Negócio e Objetivo
+
+Empresas do setor de **turismo, hotelaria e logística de viagens** enfrentam alta sazonalidade e precisam antecipar a demanda e os riscos operacionais nas principais capitais do Brasil durante os feriados nacionais.
+
+Este projeto implementa um **produto de dados ponta a ponta (End-to-End)** criado para apoiar equipes de planejamento turístico e precificação dinâmica. O pipeline cruza automaticamente as **previsões meteorológicas de 5 dias** das 27 capitais brasileiras com o **calendário oficial de feriados nacionais**, entregando indicadores prontos para consumo analítico — como **classificação térmica**, **amplitude térmica** e **índice de desconforto térmico** — tanto em **Data Lake (Parquet particionado)** quanto em **Data Warehouse relacional (PostgreSQL)**.
 
 ---
 
 ## 🏗️ Arquitetura e Fluxo de Dados
 
-O pipeline segue a arquitetura em camadas (Raw Staging -> Analytical Gold -> Relational Serving):
+O pipeline segue uma arquitetura em camadas com processamento analítico via **DuckDB**, validação rigorosa de **Data Quality** e carga idempotente (Upsert) em **PostgreSQL (Render)**:
 
 ```text
 ┌─────────────────────────┐      ┌─────────────────────────┐
 │    OpenWeather API      │      │       BrasilAPI         │
-│  (Clima - 27 Capitais)  │      │  (Feriados Nacionais)   │
+│ (Forecast - 27 Capitais)│      │  (Feriados Nacionais)   │
 └────────────┬────────────┘      └────────────┬────────────┘
              │ HTTP GET (Retries/Rate Limit)  │
              ▼                                ▼
 ┌──────────────────────────────────────────────────────────┐
 │                  Camada Raw (data/raw/)                  │
-│             JSONs Brutos & Logs de Ingestão              │
+│          JSONs Brutos Validados (Pydantic)               │
 └────────────────────────────┬─────────────────────────────┘
                              │ SQL / DuckDB + Pandas
                              ▼
 ┌──────────────────────────────────────────────────────────┐
 │            Camada Gold & Governança (output/)            │
-│  • Enriquecimento (Clima + Feriados + Classificação)     │
-│  • Dataset Particionado (.parquet)                       │
+│  • Enriquecimento (Clima + Feriados + Indicadores)       │
+│  • Dataset Particionado por ano/mes (.parquet)           │
 │  • Relatório de Data Quality (data_quality_report.json)  │
 └────────────────────────────┬─────────────────────────────┘
                              │ SQLAlchemy ORM (Upsert)
@@ -44,7 +47,7 @@ O pipeline segue a arquitetura em camadas (Raw Staging -> Analytical Gold -> Rel
 ├── data/
 │   └── raw/                     # Dados brutos ingeridos das APIs (JSON)
 ├── output/                      # Entregáveis persistidos
-│   ├── *.parquet                # Dataset final limpo e particionado
+│   ├── clima_feriados/          # Dataset final limpo e particionado (ano/mes/*.parquet)
 │   └── data_quality_report.json # Métricas e auditoria de qualidade de dados
 ├── src/                         # Código-fonte modular
 │   ├── extract.py               # Extração HTTP com tratamento de exceções e retries
@@ -65,11 +68,11 @@ O pipeline segue a arquitetura em camadas (Raw Staging -> Analytical Gold -> Rel
 
 ## 🌐 Documentação das APIs Consumidas
 
-### 1. OpenWeatherMap API (Current Weather Data)
-* **Finalidade:** Coleta das condições climáticas atuais (temperatura, sensação térmica, mínima, máxima, umidade e descrição do tempo) para as 27 capitais do Brasil.
-* **Endpoint:** `https://api.openweathermap.org/data/2.5/weather`
+### 1. OpenWeatherMap API (5 Day / 3 Hour Forecast)
+* **Finalidade:** Coleta das previsões meteorológicas (temperatura, sensação térmica, mínima, máxima, umidade e descrição do tempo) para as 27 capitais brasileiras.
+* **Endpoint:** `https://api.openweathermap.org/data/2.5/forecast`
 * **Parâmetros:** `q={cidade},{uf},BR`, `appid={OPENWEATHER_API_KEY}`, `units=metric`, `lang=pt_br`.
-* **Resiliência:** Implementação de *exponential backoff* (retentativas automáticas em falhas temporárias `429`/`5xx`), controle de *timeout* e cadência entre requisições (*rate limiting*).
+* **Resiliência:** Implementação de *retries* com *exponential backoff* em falhas temporárias (`429`/`5xx`), controle de *timeout* e cadência entre requisições.
 
 ### 2. BrasilAPI (Feriados Nacionais)
 * **Finalidade:** Obtenção do calendário oficial de feriados nacionais para enriquecimento temporal das medições climáticas.
@@ -80,7 +83,7 @@ O pipeline segue a arquitetura em camadas (Raw Staging -> Analytical Gold -> Rel
 
 ## 🗄️ Modelagem de Dados (PostgreSQL)
 
-Na camada Serving (PostgreSQL hospedado no Render), os dados são normalizados em **3 tabelas** para garantir integridade referencial, evitar redundância e permitir consultas analíticas eficientes:
+Na camada Serving (PostgreSQL hospedado no Render), os dados são normalizados em **3 tabelas** para garantir integridade referencial e permitir consultas analíticas eficientes:
 
 1. **`cidades` (Dimensão):**
    * `id` (PK, Integer, Auto-increment)
@@ -94,25 +97,24 @@ Na camada Serving (PostgreSQL hospedado no Render), os dados são normalizados e
 3. **`medicoes_climaticas` (Fato):**
    * `id` (PK, Integer, Auto-increment)
    * `cidade_id` (FK -> `cidades.id`, Not Null)
-   * `data` (Date, Not Null) — *Constraint Unique `(cidade_id, data)` para garantir idempotência via Upsert*
+   * `data` (Date, Not Null) — *Constraint `uq_cidade_data` para garantir idempotência via Upsert*
    * `temperatura_c` (Float)
    * `sensacao_termica_c` (Float)
    * `amplitude_termica_c` (Float)
    * `umidade_percent` (Integer)
    * `descricao_clima` (String)
-   * `classificacao_termica` (String) — Ex: `"Ameno"`, `"Quente"`, `"Muito Quente"`, `"Frio"`
+   * `classificacao_termica` (String) — Ex: `"Calor Intenso"`, `"Agradável"`, `"Frio / Ameno"`
 
 ---
 
 ## 🛡️ Governança e Data Quality
 
-Antes da persistência final, o pipeline executa uma etapa obrigatória de auditoria automatizada que valida:
-* **Completude:** Ausência de valores nulos em colunas críticas (`cidade`, `data`, `temperatura_c`).
-* **Unicidade:** Verificação de registros duplicados por chave de negócio (`cidade` + `data`).
-* **Validade de Domínio:** Faixas físicas coerentes para temperatura (`-10°C` a `55°C`) e umidade relativa do ar (`0%` a `100%`).
-* **Volumetria:** Conferência da ingestão esperada das 27 capitais.
+Antes da persistência final, o pipeline executa uma auditoria automatizada (`src/quality.py`) que bloqueia a gravação caso alguma regra falhe:
+* **Completude e Schema:** Verificação das 10 colunas obrigatórias e cálculo da taxa de nulos (`null_ratio_por_coluna`).
+* **Unicidade:** Garantia de zero duplicatas na chave composta `(cidade, data)`.
+* **Validade de Domínio:** Faixas físicas coerentes para temperatura (`-50°C` a `60°C`) e umidade relativa (`0%` a `100%`).
 
-Os resultados são exportados automaticamente em formato estruturado (`output/data_quality_report.json`).
+Os resultados são exportados automaticamente em `output/data_quality_report.json`.
 
 ---
 
@@ -120,8 +122,8 @@ Os resultados são exportados automaticamente em formato estruturado (`output/da
 
 1. Clone o repositório:
    ```bash
-   git clone <URL_DO_SEU_REPOSITORIO>
-   cd <NOME_DA_PASTA>
+   git clone https://github.com/eduardohnsantos/Desafio-Python-FT03-Projeto-1
+   cd Desafio-Python-FT03-Projeto-1
    ```
 
 2. Crie um arquivo `.env` na raiz do projeto baseado no `.env.example`:
